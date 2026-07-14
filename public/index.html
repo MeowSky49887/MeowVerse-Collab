@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MeowVerse Collab 💞</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <div id="joinBox">
+            <h2>Join Video Room</h2>
+
+            <input id="roomId" placeholder="Room ID">
+            <input id="password" type="password" placeholder="Password">
+            <input id="accessKey" placeholder="Access Key">
+
+            <div class="select-wrapper">
+                <select id="cameraSelect"></select>
+            </div>
+
+            <button id="joinBtn">Join</button>
+        </div>
+
+        <div id="menuPopup">
+            <div class="popup-card">
+                <h3>Menu</h3>
+
+                <label>
+                    Background Image
+                    <input 
+                        type="file" 
+                        id="backgroundInput"
+                        accept="image/png"
+                    >
+                </label>
+
+                <br><br>
+
+                <button id="menuBtn">
+                    Ok
+                </button>
+            </div>
+        </div>
+
+        <div id="videoSettingsPopup">
+            <div class="popup-card">
+                <h3>Video Settings</h3>
+
+                <div>
+                    Video ID:
+                    <span class="video-id"></span>
+                </div>
+
+                <div class="chroma-group">
+                    <label>
+                        <input type="checkbox" id="chromaEnabled">
+                        Chroma Key
+                    </label>
+
+                    <input
+                        type="color"
+                        id="chromaColor"
+                        value="#00ff00">
+
+                    <label>
+                        Threshold
+                        <input
+                            type="range"
+                            id="chromaThreshold"
+                            min="0"
+                            max="1"
+                            value="0.5"
+                            step="0.01">
+                    </label>
+
+                    <label>
+                        Smoothness
+                        <input
+                            type="range"
+                            id="chromaSmoothness"
+                            min="0"
+                            max="1"
+                            value="0.5"
+                            step="0.01">
+                    </label>
+                </div>
+
+                <div class="crop-group">
+                    <label>
+                        Crop Left
+                        <input
+                            type="number"
+                            id="cropLeft"
+                            min="0"
+                            value="0">
+                    </label>
+                    <label>
+                        Crop Right
+                        <input
+                            type="number"
+                            id="cropRight"
+                            min="0"
+                            value="0">
+                    </label>
+                    <label>
+                        Crop Top
+                        <input
+                            type="number"
+                            id="cropTop"
+                            min="0"
+                            value="0">
+                    </label>
+                    <label>
+                        Crop Bottom
+                        <input
+                            type="number"
+                            id="cropBottom"
+                            min="0"
+                            value="0">
+                    </label>
+                </div>
+
+                <button id="videoSettingsSubmit">
+                    Ok
+                </button>
+            </div>
+        </div>
+
+        <div id="scene"></div>
+
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="chromaKey.js"></script>
+        <script type="module" src="app.js"></script>
+    </body>
+</html>
