@@ -48,12 +48,33 @@ class ChromaKey {
     }
   }
 
-  resize() {
+  resize(width, height) {
     if (
       !this.video.videoWidth ||
       !this.video.videoHeight
     ) {
       return;
+    }
+
+    if (width && height) {
+      this.canvas.width = width;
+
+      this.canvas.height = height;
+
+
+      this.sampleCanvas.width = width;
+
+      this.sampleCanvas.height = height;
+
+
+      this.gl.viewport(
+        0,
+        0,
+        this.canvas.width,
+        this.canvas.height
+      );
+
+      return
     }
 
     this.canvas.width =
@@ -438,6 +459,10 @@ class ChromaKey {
 
     const data = this.frame;
 
+    if (!data) {
+      return 0;
+    }
+
     const r = data[i] / 255;
     const g = data[i + 1] / 255;
     const b = data[i + 2] / 255;
@@ -458,11 +483,11 @@ class ChromaKey {
     );
 
     const edge0 =
-      this.settings.threshold;
+      this.settings.threshold * 0.5;
 
     const edge1 =
       edge0 +
-      this.settings.smoothness;
+      this.settings.smoothness * 0.25;
 
     let t =
       (dist - edge0) /
