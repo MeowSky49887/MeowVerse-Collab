@@ -28,8 +28,10 @@ const roomBackground = {};
 const roomVideoSettings = {};
 
 const myAccessKey = process.env.MY_ACCESS_KEY
-const availableKey = JSON.parse(process.env.AVAILABLE_KEY);
-
+const availableKey = process.env.AVAILABLE_KEY
+  ? JSON.parse(process.env.AVAILABLE_KEY)
+  : [];
+  
 io.on("connection", socket => {
     socket.on(
         "join-room",
