@@ -1064,15 +1064,17 @@ scene.addEventListener(
         const reader = new FileReader();
 
         reader.onload = () => {
-            socket.emit(
-                "upload-image",
-                {
+            const img = new Image();
+
+            img.onload = () => {
+                socket.emit("upload-image", {
                     image: reader.result,
                     dropX: mouse.x - img.width / 2,
                     dropY: mouse.y - img.height / 2
-                }
-            );
-           
+                });
+            };
+
+            img.src = reader.result;
         };
 
         reader.readAsDataURL(file);
