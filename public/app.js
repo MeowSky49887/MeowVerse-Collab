@@ -1068,8 +1068,8 @@ scene.addEventListener(
                 "upload-image",
                 {
                     image: reader.result,
-                    dropX: mouse.x,
-                    dropY: mouse.y
+                    dropX: mouse.x - img.width / 2,
+                    dropY: mouse.y - img.height / 2
                 }
             );
            
