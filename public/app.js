@@ -14,6 +14,8 @@ const transforms = {};
 const videoSettings = {};
 const chromaKeys = {};
 
+const mouse = { x: 0, y: 0 };
+
 // ======================
 // WebRTC Config
 // ======================
@@ -587,7 +589,6 @@ function enableDrag(box, id, type) {
     let offsetX = 0;
     let offsetY = 0;
     
-    const mouse = { x: 0, y: 0 };
     let alpha;
 
     const canvas = box.querySelector("canvas");
@@ -976,8 +977,8 @@ function addImage(image)
     if (!transforms[image.id]) {
         transforms[image.id] = {
             locked: false,
-            x: 100,
-            y: 100,
+            x: image.dropX,
+            y: image.dropY,
             scale: 1,
             rotation: 0,
             z: highestZ() + 1
@@ -1029,6 +1030,8 @@ socket.on(
 
         if(img)
             img.remove();
+
+        delete transforms[id];
     }
 );
 
@@ -1064,7 +1067,9 @@ scene.addEventListener(
             socket.emit(
                 "upload-image",
                 {
-                    image: reader.result
+                    image: reader.result,
+                    dropX: mouse.x,
+                    dropY: mouse.y
                 }
             );
            

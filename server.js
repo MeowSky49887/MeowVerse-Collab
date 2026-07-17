@@ -145,7 +145,10 @@ io.on("connection", socket => {
 
             const image = {
                 id: `${socket.id}-${Date.now()}`,
-                data: data.image
+                owner: socket.id,
+                data: data.image,
+                dropX: data.dropX,
+                dropY: data.dropY,
             };
 
             roomImages[roomId].push(image);
