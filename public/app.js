@@ -736,47 +736,49 @@ function enableDrag(box, id, type) {
         e => {
             mouse.x = e.clientX;
             mouse.y = e.clientY;
+            
+            if (canvas) {
+                if (type == "video") {
+                    const rect = canvas.getBoundingClientRect();
 
-            if (type == "video") {
-                const rect = canvas.getBoundingClientRect();
+                    const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
+                    const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
 
-                const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
-                const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
+                    const scaleX =  canvas.width / rect.width;
+                    const scaleY = canvas.height / rect.height;
 
-                const scaleX =  canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
+                    const cropLeft = videoSettings[id]["cropLeft"] * scaleX;
+                    const cropRight = videoSettings[id]["cropRight"] * scaleX;
+                    const cropTop = videoSettings[id]["cropTop"] * scaleY;
+                    const cropBottom = videoSettings[id]["cropBottom"] * scaleY;
 
-                const cropLeft = videoSettings[id]["cropLeft"] * scaleX;
-                const cropRight = videoSettings[id]["cropRight"] * scaleX;
-                const cropTop = videoSettings[id]["cropTop"] * scaleY;
-                const cropBottom = videoSettings[id]["cropBottom"] * scaleY;
+                    const insideClipPath =
+                        x >= cropLeft &&
+                        x <= canvas.width - cropRight &&
+                        y >= cropTop &&
+                        y <= canvas.height - cropBottom;
 
-                const insideClipPath =
-                    x >= cropLeft &&
-                    x <= canvas.width - cropRight &&
-                    y >= cropTop &&
-                    y <= canvas.height - cropBottom;
+                    alpha = 0;
 
-                alpha = 0;
+                    if (insideClipPath) {
+                        alpha = chromaKeys[id].checkAlpha(x, y);
+                    }
+                } else if (type == "image") {
+                    const ctx = canvas.getContext('2d');
+                    const rect = canvas.getBoundingClientRect();
 
-                if (insideClipPath) {
-                    alpha = chromaKeys[id].checkAlpha(x, y);
+                    const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
+                    const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
+
+                    const pixel = ctx.getImageData(x, y, 1, 1).data;
+                    alpha = pixel[3];
                 }
-            } else if (type == "image") {
-                const ctx = canvas.getContext('2d');
-                const rect = canvas.getBoundingClientRect();
 
-                const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
-                const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
-
-                const pixel = ctx.getImageData(x, y, 1, 1).data;
-                alpha = pixel[3];
-            }
-
-            if (alpha == 0) {
-                box.style.pointerEvents = "none"
-            } else {
-                box.style.pointerEvents = "auto"
+                if (alpha == 0) {
+                    box.style.pointerEvents = "none"
+                } else {
+                    box.style.pointerEvents = "auto"
+                }
             }
         }
     );
