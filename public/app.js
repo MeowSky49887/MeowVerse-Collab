@@ -741,8 +741,15 @@ function enableDrag(box, id, type) {
                 if (type == "video") {
                     const rect = canvas.getBoundingClientRect();
 
+                    if (rect.width === 0 || rect.height === 0) return;
+
                     const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
                     const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
+
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                    const px = Math.max(0, Math.min(canvas.width - 1, x));
+                    const py = Math.max(0, Math.min(canvas.height - 1, y));
 
                     const scaleX =  canvas.width / rect.width;
                     const scaleY = canvas.height / rect.height;
@@ -753,24 +760,31 @@ function enableDrag(box, id, type) {
                     const cropBottom = videoSettings[id]["cropBottom"] * scaleY;
 
                     const insideClipPath =
-                        x >= cropLeft &&
-                        x <= canvas.width - cropRight &&
-                        y >= cropTop &&
-                        y <= canvas.height - cropBottom;
+                        px >= cropLeft &&
+                        px <= canvas.width - cropRight &&
+                        py >= cropTop &&
+                        py <= canvas.height - cropBottom;
 
                     alpha = 0;
 
                     if (insideClipPath) {
-                        alpha = chromaKeys[id].checkAlpha(x, y);
+                        alpha = chromaKeys[id].checkAlpha(px, py);
                     }
                 } else if (type == "image") {
-                    const ctx = canvas.getContext('2d');
+                    const ctx = canvas.getContext("2d");
                     const rect = canvas.getBoundingClientRect();
+
+                    if (rect.width === 0 || rect.height === 0) return;
 
                     const x = Math.floor((mouse.x - rect.left) * canvas.width / rect.width);
                     const y = Math.floor((mouse.y - rect.top) * canvas.height / rect.height);
 
-                    const pixel = ctx.getImageData(x, y, 1, 1).data;
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                    const px = Math.max(0, Math.min(canvas.width - 1, x));
+                    const py = Math.max(0, Math.min(canvas.height - 1, y));
+
+                    const pixel = ctx.getImageData(px, py, 1, 1).data;
                     alpha = pixel[3];
                 }
 
