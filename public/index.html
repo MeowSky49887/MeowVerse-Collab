@@ -5,58 +5,25 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>MeowVerse Collab 💞</title>
         <link rel="stylesheet" href="style.css">
+        <link href="./libs/overlayscrollbars.css" rel="stylesheet" type="text/css"/>
+        <script src="./libs/overlayscrollbars.browser.es6.min.js" defer></script>
     </head>
     <body>
-        <div id="joinBox">
-            <h2>Join Video Room</h2>
+        <div id="scrollBox" data-overlayscrollbars-y>
+            <div id="joinBox">
+                <h2>Join Video Room</h2>
 
-            <input id="roomId" placeholder="Room ID">
-            <input id="password" type="password" placeholder="Password">
-            <input id="accessKey" placeholder="Access Key">
+                <input id="roomId" placeholder="Room ID">
+                <input id="password" type="password" placeholder="Password">
+                <input id="accessKey" placeholder="Access Key">
 
-            <div class="select-wrapper">
-                <select id="cameraSelect"></select>
-            </div>
-
-            <button id="joinBtn">Join</button>
-        </div>
-
-        <div id="menuPopup">
-            <div class="popup-card">
-                <h3>Menu</h3>
-
-                <label>
-                    Background Image
-                    <input 
-                        type="file" 
-                        id="backgroundInput"
-                        accept="image/png"
-                    >
-                </label>
-
-                <br><br>
-
-                <button id="menuBtn">
-                    Ok
-                </button>
-            </div>
-        </div>
-
-        <div id="videoSettingsPopup">
-            <div class="popup-card">
                 <h3>Video Settings</h3>
 
-                <div>
-                    Video ID:
-                    <span class="video-id"></span>
+                <div class="select-wrapper">
+                    <select id="cameraSelect"></select>
                 </div>
-
+                
                 <div class="chroma-group">
-                    <label>
-                        <input type="checkbox" id="chromaEnabled">
-                        Chroma Key
-                    </label>
-
                     <input
                         type="color"
                         id="chromaColor"
@@ -120,7 +87,29 @@
                     </label>
                 </div>
 
-                <button id="videoSettingsSubmit">
+                <video id="mainVideo" hidden></video>
+                <canvas id="mainCanvas"></canvas>
+
+                <button id="joinBtn">Join</button>
+            </div>
+        </div>
+
+        <div id="menuPopup">
+            <div class="popup-card">
+                <h3>Menu</h3>
+
+                <label>
+                    Background Image
+                    <input 
+                        type="file" 
+                        id="backgroundInput"
+                        accept="image/png"
+                    >
+                </label>
+
+                <br><br>
+
+                <button id="menuBtn">
                     Ok
                 </button>
             </div>
@@ -131,5 +120,53 @@
         <script src="/socket.io/socket.io.js"></script>
         <script src="chromaKey.js"></script>
         <script type="module" src="app.js"></script>
+
+                <script type="module">
+            var { 
+                OverlayScrollbars, 
+                ScrollbarsHidingPlugin, 
+                SizeObserverPlugin, 
+                ClickScrollPlugin  
+            } = OverlayScrollbarsGlobal;
+
+            document.querySelectorAll("[data-overlayscrollbars]").forEach((element) => {
+                OverlayScrollbars(
+                    element,
+                    {
+                        overflow: {},
+                        update: {
+                            elementEvents: [['textarea', 'input']],
+                            debounce: [0, 0]
+                        }
+                    }
+                );
+            });
+
+            document.querySelectorAll("[data-overlayscrollbars-x]").forEach((element) => {
+                OverlayScrollbars(
+                    element,
+                    {
+                        overflow: { y: "hidden" },
+                        update: {
+                            elementEvents: [['textarea', 'input']],
+                            debounce: [0, 0]
+                        }
+                    }
+                );
+            });
+
+            document.querySelectorAll("[data-overlayscrollbars-y]").forEach((element) => {
+                OverlayScrollbars(
+                    element,
+                    {
+                        overflow: { x: "hidden" },
+                        update: {
+                            elementEvents: [['textarea', 'input']],
+                            debounce: [0, 0]
+                        }
+                    }
+                );
+            });
+        </script>
     </body>
 </html>

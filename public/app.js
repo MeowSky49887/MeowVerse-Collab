@@ -7,14 +7,13 @@ const scene = document.getElementById("scene");
 const joinBtn = document.getElementById("joinBtn");
 const cameraSelect = document.getElementById("cameraSelect");
 
-let localStream = null;
-
 const peers = {};
 const transforms = {};
 const videoSettings = {};
 const chromaKeys = {};
 
 const mouse = { x: 0, y: 0 };
+
 
 // ======================
 // WebRTC Config
@@ -26,6 +25,7 @@ const configuration = {
         }
     ]
 };
+
 
 // ======================
 // Load Cameras
@@ -67,56 +67,113 @@ async function loadCameras() {
     });
 }
 
-// ======================
-// Join Room
-// ======================
-joinBtn.onclick = async () => {
-    const roomId =
-        document.getElementById("roomId").value.trim();
 
-    const password =
-        document.getElementById("password").value.trim();
+const colorPicker = document.getElementById('chromaColor');
 
-    const accessKey =
-        document.getElementById("accessKey").value.trim();
+const mainVideo = document.getElementById('mainVideo');
+const mainCanvas = document.getElementById('mainCanvas');
+const previewChroma = new ChromaKey(mainVideo, mainCanvas);
 
-    if (!roomId || !password) {
-        alert("Enter room ID and password.");
-        return;
+let localStream = null;
+
+const STORAGE_KEY = "localVideoSettings";
+
+let localVideoSettings = JSON.parse(
+    localStorage.getItem(STORAGE_KEY)
+) || {};
+
+function loadLocalVideoSettings() {
+    const settings = JSON.parse(
+        localStorage.getItem(STORAGE_KEY)
+    );
+
+    if (!settings) return;
+
+    for (const [key, value] of Object.entries(settings)) {
+        const input = document.getElementById(key);
+        if (input) {
+            input.value = value;
+        }
     }
 
-    try {
-        localStream =
-            await navigator.mediaDevices.getUserMedia({
-                video: {
-                    deviceId:
-                        cameraSelect.value
-                        ? {
-                            exact: cameraSelect.value
-                        } : undefined
-                },
-                audio: false
-            });
+    localVideoSettings = settings;
+}
 
-        socket.emit("join-room", {
-            roomId,
-            password,
-            accessKey
+loadLocalVideoSettings();
+
+function updateLocalVideoSettings() {
+    localVideoSettings = {
+        chromaColor: document.getElementById("chromaColor").value,
+        chromaThreshold: Number(document.getElementById("chromaThreshold").value),
+        chromaSmoothness: Number(document.getElementById("chromaSmoothness").value),
+        cropLeft: Number(document.getElementById("cropLeft").value),
+        cropRight: Number(document.getElementById("cropRight").value),
+        cropTop: Number(document.getElementById("cropTop").value),
+        cropBottom: Number(document.getElementById("cropBottom").value),
+    };
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(localVideoSettings)
+    );
+
+    const { r, g, b } = hexToRgb(localVideoSettings["chromaColor"])
+    previewChroma.setKey({
+        r: r,
+        g: g,
+        b: b, 
+        threshold: localVideoSettings["chromaThreshold"],
+        smoothness: localVideoSettings["chromaSmoothness"],
+    });
+
+    mainCanvas.style.clipPath =
+        `inset(${localVideoSettings["cropTop"]}px ${localVideoSettings["cropRight"]}px ${localVideoSettings["cropBottom"]}px ${localVideoSettings["cropLeft"]}px)`;
+}
+
+// Initialize once
+updateLocalVideoSettings();
+
+// Add listeners
+[
+    "chromaColor",
+    "chromaThreshold",
+    "chromaSmoothness",
+    "cropLeft",
+    "cropRight",
+    "cropTop",
+    "cropBottom"
+].forEach(id => {
+    document
+        .getElementById(id)
+        .addEventListener("input", updateLocalVideoSettings);
+});
+
+mainVideo.autoplay = true;
+mainVideo.playsInline = true;
+mainVideo.muted = true;
+mainVideo.srcObject = await navigator.mediaDevices.getUserMedia({
+    video: {
+        deviceId:
+            cameraSelect.value
+            ? {
+                exact: cameraSelect.value
+            } : undefined
+    },
+    audio: false
+});
+
+cameraSelect.onchange = async () => {
+    mainVideo.srcObject = 
+        await navigator.mediaDevices.getUserMedia({
+            video: {
+                deviceId: {
+                    exact:
+                    cameraSelect.value
+                }
+            },
+            audio: false
         });
 
-        document.getElementById(
-            "joinBox"
-        ).style.display = "none";
-    } catch (e) {
-        console.error(e);
-        alert("Could not access camera.");
-    }
-};
-
-// ======================
-// Camera Switch
-// ======================
-cameraSelect.onchange = async () => {
     if (!localStream) return;
 
     try {
@@ -194,6 +251,56 @@ cameraSelect.onchange = async () => {
     }
 };
 
+mainVideo.addEventListener("loadedmetadata", () => {
+    previewChroma.resize(mainVideo.videoWidth, mainVideo.videoHeight);
+});
+
+// ======================
+// Join Room
+// ======================
+joinBtn.onclick = async () => {
+    const roomId =
+        document.getElementById("roomId").value.trim();
+
+    const password =
+        document.getElementById("password").value.trim();
+
+    const accessKey =
+        document.getElementById("accessKey").value.trim();
+
+    if (!roomId || !password) {
+        alert("Enter room ID and password.");
+        return;
+    }
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                deviceId:
+                    cameraSelect.value
+                    ? {
+                        exact: cameraSelect.value
+                    } : undefined
+            },
+            audio: false
+        });
+
+        socket.emit("join-room", {
+            roomId,
+            password,
+            accessKey
+        });
+
+        document.getElementById(
+            "joinBox"
+        ).style.display = "none";
+    } catch (e) {
+        console.error(e);
+        alert("Could not access camera.");
+    }
+};
+
+
 // ======================
 // Socket Events
 // ======================
@@ -268,6 +375,7 @@ socket.on("user-left", id => {
         box.remove();
     }
 });
+
 
 // ======================
 // WebRTC
@@ -356,14 +464,14 @@ async function createOffer(id) {
     });
 }
 
+
 // ======================
 // Videos
 // ======================
 function createLocalVideo() {
     createVideoBox(
         socket.id,
-        localStream,
-        true
+        localStream
     );
 }
 
@@ -379,8 +487,7 @@ function addRemoteVideo(
     if (!box) {
         box = createVideoBox(
             id,
-            stream,
-            false
+            stream
         );
     }
 
@@ -391,8 +498,7 @@ function addRemoteVideo(
 
 function createVideoBox(
     id,
-    stream,
-    muted
+    stream
 ) {
     let box =
     document.getElementById(
@@ -420,16 +526,54 @@ function createVideoBox(
 
     if (!videoSettings[id]) {
         videoSettings[id] = {
-            id,
-            chromaEnabled: false,
-            chromaColor: "#00ff00",
-            chromaThreshold: 0.5,
-            chromaSmoothness: 0.5,
-            cropLeft:0,
-            cropRight: 0,
-            cropTop: 0,
-            cropBottom: 0
+            chromaColor:
+                document.getElementById(
+                    "chromaColor"
+                ).value,
+
+            chromaThreshold:
+                Number(
+                    document.getElementById(
+                        "chromaThreshold"
+                    ).value
+                ),
+
+            chromaSmoothness:
+                Number(
+                    document.getElementById(
+                        "chromaSmoothness"
+                    ).value
+                ),
+
+            cropLeft:
+                Number(
+                    document.getElementById(
+                        "cropLeft"
+                    ).value
+                ),
+
+            cropRight:
+                Number(
+                    document.getElementById(
+                        "cropRight"
+                    ).value
+                ),
+
+            cropTop:
+                Number(
+                    document.getElementById(
+                        "cropTop"
+                    ).value
+                ),
+
+            cropBottom:
+                Number(
+                    document.getElementById(
+                        "cropBottom"
+                    ).value
+                )
         };
+        console.log(videoSettings[id]);
     }
 
     const video = document.createElement("video");
@@ -437,7 +581,7 @@ function createVideoBox(
 
     video.autoplay = true;
     video.playsInline = true;
-    video.muted = muted;
+    video.muted = true;
     video.srcObject = stream;
 
     box.appendChild(video);
@@ -465,6 +609,7 @@ function createVideoBox(
 
     return box;
 }
+
 
 // ======================
 // Video Transform
@@ -524,6 +669,7 @@ function lowestZ() {
         ...Object.values(transforms).map(t => t.z || 0)
     );
 }
+
 
 // ======================
 // Drag
@@ -699,9 +845,7 @@ function enableDrag(box, id, type) {
                 e.preventDefault();
 
                 if (e.altKey) {
-                    if (type == "video") {
-                        openVideoSettings(id);
-                    } else if (type == "image") {
+                    if (type == "image") {
                         socket.emit(
                             "delete-image",
                             id
@@ -798,64 +942,10 @@ function enableDrag(box, id, type) {
     );
 }
 
+
 // ======================
 // Video Chroma Key
 // ======================
-function openVideoSettings(id) {
-    const popup =
-        document.getElementById(
-            "videoSettingsPopup"
-        );
-
-    popup.dataset.videoId = id;
-
-    const s = videoSettings[id];
-
-    if (s) {
-        document.getElementById(
-            "chromaEnabled"
-        ).checked =
-            s.chromaEnabled;
-
-        document.getElementById(
-            "chromaColor"
-        ).value =
-            s.chromaColor;
-
-        document.getElementById(
-            "chromaThreshold"
-        ).value =
-            s.chromaThreshold;
-
-        document.getElementById(
-            "chromaSmoothness"
-        ).value =
-            s.chromaSmoothness;
-
-        document.getElementById(
-            "cropLeft"
-        ).value =
-            s.cropLeft;
-
-        document.getElementById(
-            "cropRight"
-        ).value =
-            s.cropRight;
-
-        document.getElementById(
-            "cropTop"
-        ).value =
-            s.cropTop;
-
-        document.getElementById(
-            "cropBottom"
-        ).value =
-            s.cropBottom;
-    }
-
-    popup.classList.add("show");
-}
-
 function sendEditedVideoSettings(id) {
     socket.emit(
         "edited-video-settings",
@@ -866,90 +956,16 @@ function sendEditedVideoSettings(id) {
     );
 }
 
-document
-    .getElementById("videoSettingsSubmit")
-    .addEventListener("click", () => {
-        const popup =
-            document.getElementById(
-                "videoSettingsPopup"
-            );
-
-        const id =
-            popup.dataset.videoId;
-
-        videoSettings[id] = {
-            chromaEnabled:
-                document.getElementById(
-                    "chromaEnabled"
-                ).checked,
-
-            chromaColor:
-                document.getElementById(
-                    "chromaColor"
-                ).value,
-
-            chromaThreshold:
-                Number(
-                    document.getElementById(
-                        "chromaThreshold"
-                    ).value
-                ),
-
-            chromaSmoothness:
-                Number(
-                    document.getElementById(
-                        "chromaSmoothness"
-                    ).value
-                ),
-
-            cropLeft:
-                Number(
-                    document.getElementById(
-                        "cropLeft"
-                    ).value
-                ),
-
-            cropRight:
-                Number(
-                    document.getElementById(
-                        "cropRight"
-                    ).value
-                ),
-
-            cropTop:
-                Number(
-                    document.getElementById(
-                        "cropTop"
-                    ).value
-                ),
-
-            cropBottom:
-                Number(
-                    document.getElementById(
-                        "cropBottom"
-                    ).value
-                )
-        };
-
-        sendEditedVideoSettings(id);
-        applyEditedVideoSettings(id);
-
-        popup.classList.remove("show");
-    });
-
 function applyEditedVideoSettings(id) {
     if (chromaKeys[id]) {
-        chromaKeys[id].setKey();
-        if (videoSettings[id]["chromaEnabled"]) {
-            const { r, g, b } = hexToRgb(videoSettings[id]["chromaColor"])
-            chromaKeys[id].setKey({
-                r: r,
-                g: g,
-                b: b, 
-                threshold: videoSettings[id]["chromaThreshold"],
-                smoothness: videoSettings[id]["chromaSmoothness"],
-            });
-        }
+        const { r, g, b } = hexToRgb(videoSettings[id]["chromaColor"])
+        chromaKeys[id].setKey({
+            r: r,
+            g: g,
+            b: b, 
+            threshold: videoSettings[id]["chromaThreshold"],
+            smoothness: videoSettings[id]["chromaSmoothness"],
+        });
     }
 
     const box =
@@ -972,6 +988,7 @@ function hexToRgb(hex) {
         b: parseInt(hex.slice(4, 6), 16)
     };
 }
+
 
 // ======================
 // Props Sync
@@ -1097,6 +1114,7 @@ scene.addEventListener(
     }
 );
 
+
 // ======================
 // Sync Video Settings
 // ======================
@@ -1125,6 +1143,7 @@ socket.on(
         );
     }
 );
+
 
 // ======================
 // Sync Transforms
@@ -1166,6 +1185,7 @@ socket.on(
         }
     }
 );
+
 
 // ======================
 // Background
