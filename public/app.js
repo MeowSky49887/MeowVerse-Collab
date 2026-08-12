@@ -426,6 +426,12 @@ async function createPeer(
     }
 
     pc.ontrack = e => {
+        if (
+            !document.getElementById(`box-${socket.id}`)
+        ) {
+            createLocalVideo();
+        }
+
         addRemoteVideo(
             id,
             e.streams[0]
@@ -1171,18 +1177,6 @@ socket.on(
             transforms,
             data
         );
-
-        if (
-            !document.getElementById(`box-${socket.id}`)
-        ) {
-            createLocalVideo();
-
-            transforms[socket.id].z =
-                highestZ() + 1;
-
-            applyEditedTransform(socket.id);
-            sendEditedTransform(socket.id);
-        }
     }
 );
 
