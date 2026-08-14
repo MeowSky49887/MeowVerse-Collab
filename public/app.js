@@ -309,6 +309,12 @@ socket.on("error-message", msg => {
 });
 
 socket.on("all-users", async users => {
+    if (
+        !document.getElementById(`box-${socket.id}`)
+    ) {
+        createLocalVideo();
+    }
+
     for (const id of users) {
         await createPeer(id, true);
     }
@@ -426,12 +432,6 @@ async function createPeer(
     }
 
     pc.ontrack = e => {
-        if (
-            !document.getElementById(`box-${socket.id}`)
-        ) {
-            createLocalVideo();
-        }
-
         addRemoteVideo(
             id,
             e.streams[0]
