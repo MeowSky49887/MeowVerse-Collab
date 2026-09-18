@@ -1195,9 +1195,11 @@ document.addEventListener(
         ) {
             e.preventDefault();
 
-            menu.classList.toggle(
-                "show"
-            );
+            if (localStream) {
+                menu.classList.toggle(
+                    "show"
+                );      
+            }
         }
     }
 );
