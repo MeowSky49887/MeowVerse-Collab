@@ -2,6 +2,7 @@ class ChromaKey {
   constructor(video, canvas) {
     this.video = video;
     this.canvas = canvas;
+
     this.running = false;
     this.enabled = false;
 
@@ -16,20 +17,15 @@ class ChromaKey {
     this.gl = canvas.getContext("webgl2", {
       alpha: true,
       premultipliedAlpha: false,
+      preserveDrawingBuffer: true,
     });
 
     if (!this.gl) {
       throw new Error("WebGL2 not supported");
     }
 
-    this.sampleCanvas =
-      document.createElement("canvas");
-
-    this.sampleCtx =
-      this.sampleCanvas.getContext(
-        "2d",
-        { willReadFrequently: true }
-      );
+    // Final alpha buffer used by checkAlpha().
+    this.frame = null;
 
     this.init();
 
@@ -56,46 +52,132 @@ class ChromaKey {
       return;
     }
 
-    if (width && height) {
-      this.canvas.width = width;
+    const w =
+      width || this.video.videoWidth;
 
-      this.canvas.height = height;
+    const h =
+      height || this.video.videoHeight;
 
-
-      this.sampleCanvas.width = width;
-
-      this.sampleCanvas.height = height;
-
-
-      this.gl.viewport(
-        0,
-        0,
-        this.canvas.width,
-        this.canvas.height
-      );
-
-      return
-    }
-
-    this.canvas.width =
-      this.video.videoWidth;
-
-    this.canvas.height =
-      this.video.videoHeight;
-
-
-    this.sampleCanvas.width =
-      this.video.videoWidth;
-
-    this.sampleCanvas.height =
-      this.video.videoHeight;
-
+    this.canvas.width = w;
+    this.canvas.height = h;
 
     this.gl.viewport(
       0,
       0,
-      this.canvas.width,
-      this.canvas.height
+      w,
+      h
+    );
+
+    // Readback buffer must use the actual video dimensions.
+    this.readWidth = this.video.videoWidth;
+    this.readHeight = this.video.videoHeight;
+
+    this.frame = new Uint8Array(
+      this.readWidth *
+      this.readHeight *
+      4
+    );
+
+    this.createReadbackFramebuffer(
+      this.readWidth,
+      this.readHeight
+    );
+  }
+
+  createReadbackFramebuffer(width, height) {
+    const gl = this.gl;
+
+    if (this.readFramebuffer) {
+      gl.deleteFramebuffer(
+        this.readFramebuffer
+      );
+
+      gl.deleteTexture(
+        this.readTexture
+      );
+    }
+
+    this.readFramebuffer =
+      gl.createFramebuffer();
+
+    this.readTexture =
+      gl.createTexture();
+
+    gl.bindTexture(
+      gl.TEXTURE_2D,
+      this.readTexture
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MIN_FILTER,
+      gl.NEAREST
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MAG_FILTER,
+      gl.NEAREST
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_WRAP_S,
+      gl.CLAMP_TO_EDGE
+    );
+
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_WRAP_T,
+      gl.CLAMP_TO_EDGE
+    );
+
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      width,
+      height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null
+    );
+
+    gl.bindFramebuffer(
+      gl.FRAMEBUFFER,
+      this.readFramebuffer
+    );
+
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      this.readTexture,
+      0
+    );
+
+    const status =
+      gl.checkFramebufferStatus(
+        gl.FRAMEBUFFER
+      );
+
+    if (
+      status !== gl.FRAMEBUFFER_COMPLETE
+    ) {
+      throw new Error(
+        "Readback framebuffer is incomplete"
+      );
+    }
+
+    gl.bindFramebuffer(
+      gl.FRAMEBUFFER,
+      null
+    );
+
+    gl.bindTexture(
+      gl.TEXTURE_2D,
+      null
     );
   }
 
@@ -103,6 +185,7 @@ class ChromaKey {
     const gl = this.gl;
 
     const vs = `#version 300 es
+
     in vec2 aPosition;
     in vec2 aUV;
 
@@ -110,30 +193,44 @@ class ChromaKey {
 
     void main() {
       vUV = aUV;
-      gl_Position = vec4(aPosition, 0.0, 1.0);
+      gl_Position =
+        vec4(aPosition, 0.0, 1.0);
     }
     `;
 
     const fs = `#version 300 es
+
     precision highp float;
 
     uniform sampler2D uVideo;
+
     uniform bool uEnabled;
+
     uniform vec3 uKeyColor;
+
     uniform float uThreshold;
+
     uniform float uSmoothness;
 
     in vec2 vUV;
+
     out vec4 outColor;
 
     void main() {
+
       vec4 color =
         texture(uVideo, vUV);
 
-        if (!uEnabled) {
-          outColor = color;
-          return;
-        }
+      // Native alpha from the video.
+      float videoAlpha =
+        color.a;
+
+      // No chroma key:
+      // preserve the video's original alpha.
+      if (!uEnabled) {
+        outColor = color;
+        return;
+      }
 
       float dist =
         distance(
@@ -141,16 +238,22 @@ class ChromaKey {
           uKeyColor
         );
 
-      float alpha =
+      float keyAlpha =
         smoothstep(
           uThreshold,
           uThreshold + uSmoothness,
           dist
         );
 
-      vec3 rgb = color.rgb;
+      // Chroma key alpha is multiplied
+      // by the video's existing alpha.
+      float finalAlpha =
+        videoAlpha * keyAlpha;
 
-      // simple despill
+      vec3 rgb =
+        color.rgb;
+
+      // Despill.
       if (
         rgb.g > rgb.r &&
         rgb.g > rgb.b
@@ -158,57 +261,79 @@ class ChromaKey {
         float avg =
           (rgb.r + rgb.b) * 0.5;
 
+        // Only despill visible pixels.
         rgb.g =
           mix(
             avg,
             rgb.g,
-            alpha
+            keyAlpha
           );
       }
 
       outColor =
-        vec4(rgb, alpha);
+        vec4(
+          rgb,
+          finalAlpha
+        );
     }
     `;
 
-    const shader = (type, source) => {
-      const s =
-        gl.createShader(type);
+    const compileShader =
+      (type, source) => {
+        const shader =
+          gl.createShader(type);
 
-      gl.shaderSource(s, source);
-      gl.compileShader(s);
-
-      if (
-        !gl.getShaderParameter(
-          s,
-          gl.COMPILE_STATUS
-        )
-      ) {
-        throw new Error(
-          gl.getShaderInfoLog(s)
+        gl.shaderSource(
+          shader,
+          source
         );
-      }
 
-      return s;
-    };
+        gl.compileShader(
+          shader
+        );
+
+        if (
+          !gl.getShaderParameter(
+            shader,
+            gl.COMPILE_STATUS
+          )
+        ) {
+          const log =
+            gl.getShaderInfoLog(
+              shader
+            );
+
+          gl.deleteShader(shader);
+
+          throw new Error(log);
+        }
+
+        return shader;
+      };
 
     this.program =
       gl.createProgram();
 
-    gl.attachShader(
-      this.program,
-      shader(
+    const vertexShader =
+      compileShader(
         gl.VERTEX_SHADER,
         vs
-      )
+      );
+
+    const fragmentShader =
+      compileShader(
+        gl.FRAGMENT_SHADER,
+        fs
+      );
+
+    gl.attachShader(
+      this.program,
+      vertexShader
     );
 
     gl.attachShader(
       this.program,
-      shader(
-        gl.FRAGMENT_SHADER,
-        fs
-      )
+      fragmentShader
     );
 
     gl.linkProgram(
@@ -228,13 +353,22 @@ class ChromaKey {
       );
     }
 
+    gl.deleteShader(
+      vertexShader
+    );
+
+    gl.deleteShader(
+      fragmentShader
+    );
+
     gl.useProgram(
       this.program
     );
 
     const vertices =
       new Float32Array([
-        // x y u v
+        // x, y, u, v
+
         -1, -1, 0, 1,
          1, -1, 1, 1,
         -1,  1, 0, 0,
@@ -251,12 +385,12 @@ class ChromaKey {
       this.vao
     );
 
-    const buffer =
+    this.buffer =
       gl.createBuffer();
 
     gl.bindBuffer(
       gl.ARRAY_BUFFER,
-      buffer
+      this.buffer
     );
 
     gl.bufferData(
@@ -303,6 +437,9 @@ class ChromaKey {
       8
     );
 
+    gl.bindVertexArray(null);
+
+    // Video texture.
     this.texture =
       gl.createTexture();
 
@@ -335,6 +472,11 @@ class ChromaKey {
       gl.CLAMP_TO_EDGE
     );
 
+    gl.bindTexture(
+      gl.TEXTURE_2D,
+      null
+    );
+
     this.uVideo =
       gl.getUniformLocation(
         this.program,
@@ -365,6 +507,10 @@ class ChromaKey {
         "uSmoothness"
       );
 
+    gl.useProgram(
+      this.program
+    );
+
     gl.uniform1i(
       this.uVideo,
       0
@@ -382,10 +528,16 @@ class ChromaKey {
       0
     );
 
-    gl.enable(gl.BLEND);
+    // Important:
+    // allow transparent output.
+    gl.enable(
+      gl.BLEND
+    );
 
-    gl.blendFunc(
+    gl.blendFuncSeparate(
       gl.SRC_ALPHA,
+      gl.ONE_MINUS_SRC_ALPHA,
+      gl.ONE,
       gl.ONE_MINUS_SRC_ALPHA
     );
 
@@ -423,7 +575,6 @@ class ChromaKey {
       smoothness,
     } = this.settings;
 
-
     this.enabled = true;
 
     gl.uniform1i(
@@ -449,64 +600,6 @@ class ChromaKey {
     );
   }
 
-  checkAlpha(x, y) {
-    if (!this.enabled) {
-      return 255;
-    }
-
-    const i =
-      (y * this.video.videoWidth + x) * 4;
-
-    const data = this.frame;
-
-    if (!data) {
-      return 0;
-    }
-
-    const r = data[i] / 255;
-    const g = data[i + 1] / 255;
-    const b = data[i + 2] / 255;
-
-    const kr =
-      this.settings.r / 255;
-
-    const kg =
-      this.settings.g / 255;
-
-    const kb =
-      this.settings.b / 255;
-
-    const dist = Math.sqrt(
-      (r - kr) * (r - kr) +
-      (g - kg) * (g - kg) +
-      (b - kb) * (b - kb)
-    );
-
-    const edge0 =
-      this.settings.threshold * 0.5;
-
-    const edge1 =
-      edge0 +
-      this.settings.smoothness * 0.25;
-
-    let t =
-      (dist - edge0) /
-      (edge1 - edge0);
-
-    t =
-      Math.max(
-        0,
-        Math.min(1, t)
-      );
-
-    t =
-      t * t * (3 - 2 * t);
-
-    return Math.round(
-      t * 255
-    );
-  }
-
   render() {
     const gl = this.gl;
 
@@ -516,6 +609,11 @@ class ChromaKey {
       return;
     }
 
+    gl.useProgram(
+      this.program
+    );
+
+    // Upload video frame.
     gl.activeTexture(
       gl.TEXTURE0
     );
@@ -525,6 +623,19 @@ class ChromaKey {
       this.texture
     );
 
+    /*
+     * Important:
+     *
+     * Do NOT use the 2D canvas here.
+     *
+     * The video texture is allowed to retain
+     * its native alpha channel.
+     */
+    gl.pixelStorei(
+      gl.UNPACK_FLIP_Y_WEBGL,
+      false
+    );
+
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -532,6 +643,19 @@ class ChromaKey {
       gl.RGBA,
       gl.UNSIGNED_BYTE,
       this.video
+    );
+
+    // Draw to visible canvas.
+    gl.bindFramebuffer(
+      gl.FRAMEBUFFER,
+      null
+    );
+
+    gl.viewport(
+      0,
+      0,
+      this.canvas.width,
+      this.canvas.height
     );
 
     gl.clear(
@@ -548,19 +672,92 @@ class ChromaKey {
       6
     );
 
-    this.sampleCtx.drawImage(
-      this.video,
-      0,
-      0
-    );
+    /*
+     * Render again to an offscreen framebuffer
+     * so checkAlpha() can obtain the final alpha.
+     */
+    if (
+      this.readFramebuffer &&
+      this.frame
+    ) {
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        this.readFramebuffer
+      );
 
-    this.frame =
-      this.sampleCtx.getImageData(
+      gl.viewport(
         0,
         0,
-        this.video.videoWidth,
-        this.video.videoHeight
-      ).data;
+        this.readWidth,
+        this.readHeight
+      );
+
+      gl.clear(
+        gl.COLOR_BUFFER_BIT
+      );
+
+      gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        6
+      );
+
+      gl.readPixels(
+        0,
+        0,
+        this.readWidth,
+        this.readHeight,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.frame
+      );
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        null
+      );
+
+      // Restore visible canvas viewport.
+      gl.viewport(
+        0,
+        0,
+        this.canvas.width,
+        this.canvas.height
+      );
+    }
+
+    gl.bindVertexArray(null);
+  }
+
+  checkAlpha(x, y) {
+    if (!this.frame) {
+      return 0;
+    }
+
+    if (
+      x < 0 ||
+      y < 0 ||
+      x >= this.readWidth ||
+      y >= this.readHeight
+    ) {
+      return 0;
+    }
+
+    /*
+     * WebGL readPixels has its origin at the
+     * bottom-left, while video coordinates usually
+     * have their origin at the top-left.
+     */
+    const glY =
+      this.readHeight - 1 - y;
+
+    const i =
+      (
+        glY * this.readWidth +
+        x
+      ) * 4;
+
+    return this.frame[i + 3];
   }
 
   play() {
@@ -581,16 +778,14 @@ class ChromaKey {
 
         this.render();
 
-        this.video
-          .requestVideoFrameCallback(
-            loop
-          );
-      };
-
-      this.video
-        .requestVideoFrameCallback(
+        this.video.requestVideoFrameCallback(
           loop
         );
+      };
+
+      this.video.requestVideoFrameCallback(
+        loop
+      );
     } else {
       const loop = () => {
         if (!this.running) {
@@ -619,16 +814,40 @@ class ChromaKey {
 
     const gl = this.gl;
 
-    gl.deleteTexture(
-      this.texture
-    );
+    if (this.texture) {
+      gl.deleteTexture(
+        this.texture
+      );
+    }
 
-    gl.deleteVertexArray(
-      this.vao
-    );
+    if (this.readTexture) {
+      gl.deleteTexture(
+        this.readTexture
+      );
+    }
 
-    gl.deleteProgram(
-      this.program
-    );
+    if (this.readFramebuffer) {
+      gl.deleteFramebuffer(
+        this.readFramebuffer
+      );
+    }
+
+    if (this.vao) {
+      gl.deleteVertexArray(
+        this.vao
+      );
+    }
+
+    if (this.buffer) {
+      gl.deleteBuffer(
+        this.buffer
+      );
+    }
+
+    if (this.program) {
+      gl.deleteProgram(
+        this.program
+      );
+    }
   }
 }
